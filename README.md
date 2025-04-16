@@ -1,0 +1,1 @@
+**Idea shamelessly stolen from /u/waldothewalnut on Reddit**
