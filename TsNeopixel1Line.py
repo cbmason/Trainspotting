@@ -1,7 +1,14 @@
 from abc import ABC
 
+import adafruit_pixelbuf
+import board
+import logging
+
+import colors
+from StApiClient import StApiResponseHolder
 from TsNeopixel import TsNeopixel
 
+logger = logging.getLogger(__name__)
 
 class TsNeopixel1Line(TsNeopixel):
     """
@@ -11,6 +18,16 @@ class TsNeopixel1Line(TsNeopixel):
         - One stop per LED would be 6.3"
 
     """
+    NUM_PIXELS = 133
+
+    def __init__(
+            self,
+            name: str,
+            pin: board.pin,
+            response_holder: StApiResponseHolder,
+            **kwargs):
+        super().__init__(name, pin, self.NUM_PIXELS, response_holder, **kwargs)
+
     STOP_IDX_DICT_NB = {
         "Angle Lake": 0,
         "SeaTac/Airport": 3,
@@ -63,5 +80,75 @@ class TsNeopixel1Line(TsNeopixel):
         "Lynnwood City Center": 67,
     }
 
-    def _determine_lit_pixel(self):
+    CACHED_ID_TO_NAMES = {}
+    CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
+
+    def _clear_all_pixels(self):
+        self.fill(0)
+
+    def _set_pixel_stopped(self, pixel_idx: int):
+        self[pixel_idx] = colors.colors["RED"]
+
+    def _set_pixel_going(self, pixel_idx: int):
+        self[pixel_idx] = colors.colors["GREEN"]
+
+    def _populate_stop_map(self, ref_dictionary_stops: dict):
+        self.CACHED_ID_TO_NAMES = {}
+        for stop in ref_dictionary_stops:
+            self.CACHED_ID_TO_NAMES[stop['id']] = stop['name']
+
+    def _populate_trip_map(self, ref_dictionary_trips: dict):
+        self.CACHED_TRIP_TO_DIRECTION = {}
+        for trip in ref_dictionary_trips:
+            self.CACHED_TRIP_TO_DIRECTION[trip['id']] = trip['directionId']
+
+    def update(self):
+        # verify validity
+        server_response = self.response_holder.get_response()
+        if server_response.status_code != 200:
+            logger.error(f"Error: Server responded with {server_response.status_code}")
+            return
+        body = server_response.json()
+
+        # find all trains
+        for train in body['data']['list']:
+            # for each, find where it is, and illuminate
+            next_stop_id = train['status']['nextStop']
+            distance_to_next = train['status']['nextStopTimeOffset']
+            trip_id = train['activeTripId']
+
+            # cross reference the ID to [references][stops], which will have the name.  Check the cache first
+            if next_stop_id not in self.CACHED_ID_TO_NAMES:
+                ref_dictionary_stops = body['data']['references']['stops']
+                # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
+                if any(item['id'] == next_stop_id for item in ref_dictionary_stops):
+                    self.populate_stop_map(ref_dictionary_stops)
+                else:
+                    continue
+            next_stop_name = self.CACHED_ID_TO_NAMES[next_stop_id]
+
+            # cross reference the trip ID to [references][trips], which will have the direction
+            if trip_id not in self.CACHED_TRIP_TO_DIRECTION:
+                ref_dictionary_trips = body['data']['references']['trips']
+                # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
+                if any(item['id'] == trip_id for item in ref_dictionary_trips):
+                    self._populate_trip_map(ref_dictionary_trips)
+                else:
+                    continue
+            direction = self.CACHED_TRIP_TO_DIRECTION[trip_id]
+
+            # look at orientation to see which direction we're in
+
+            # find position along stop:
+            # if closestStopTimeOffset = 0 then we're done
+            if distance_to_next == 0:
+
+
+                # find stop in stopTimes (probably have to linear search):
+                #    expected = [stopTimes][n][arrivalTime] [stopTimes][n - 1][departureTime]
+                #    interpolate actual nextStopTimeOffset
+
+                # if ABS(closeststop - nextstop)
+                # if closest == next, +2
+
         pass

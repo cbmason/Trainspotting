@@ -1,11 +1,27 @@
 import logging
+import time
+
 import requests
 import validators
 
+from TsNeopixel import TsNeopixel
+
+
 class StApiResponseHolder:
     def __init__(self):
-        self.response = None
-        # self.stale = False TODO: do we want this?
+        self._response = None
+        self._timestamp = 0
+
+    def set_response(self, response):
+        self._response = response
+        self._timestamp = time.time()
+
+    def get_response(self) -> requests.Response:
+        return self._response
+
+    def get_timestamp(self):
+        return self._timestamp
+
 
 class StApiClient:
     AGENCY_ST_ID = "40"
@@ -15,6 +31,7 @@ class StApiClient:
 
     def __init__(self, api_key: str):
         self.endpoints = {}
+        self.neopixels = {}
         self.api_key = api_key
 
     def add_trips_for_route_query(self, route: str, response_holder: StApiResponseHolder):
@@ -31,14 +48,18 @@ class StApiClient:
             raise ValueError("Invalid route")
         self.endpoints[new_url] = response_holder
 
+    def add_neopixel(self, neopixel: TsNeopixel, response_holder: StApiResponseHolder):
+        self.neopixels[neopixel] = response_holder
+
     def update(self):
         params = {'key': self.api_key}
         for endpoint, container in self.endpoints.items():
             response = requests.get(endpoint, params=params)
             if response.status_code != 200:
                 logging.ERROR(f"{endpoint} returned code {response.status_code}")
-            container.response = response.text
-
+            container.set_response(response.text)
+        for line in self.neopixels.keys():
+            line.update()
 
 
     # closest station and displacement are how this works

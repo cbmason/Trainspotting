@@ -24,10 +24,9 @@ class TsNeopixel(adafruit_pixelbuf.PixelBuf, ABC):
         neopixel_write(self._pin, buf)
 
     @abstractmethod
-    def _determine_lit_pixel(self):
+    def update(self):
         raise NotImplementedError("Must be subclassed")
 
-    @abstractmethod
     def __hash__(self):
         return hash(self._name)
 
