@@ -19,6 +19,8 @@ class TsNeopixel1Line(TsNeopixel):
 
     """
     NUM_PIXELS = 133
+    DIRECTION_SOUTH = 0
+    DIRECTION_NORTH = 1
 
     def __init__(
             self,
@@ -82,6 +84,7 @@ class TsNeopixel1Line(TsNeopixel):
 
     CACHED_ID_TO_NAMES = {}
     CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
+    CACHED_ID_TO_TRAVEL_TIME = {}
 
     def _clear_all_pixels(self):
         self.fill(0)
@@ -89,7 +92,7 @@ class TsNeopixel1Line(TsNeopixel):
     def _set_pixel_stopped(self, pixel_idx: int):
         self[pixel_idx] = colors.colors["RED"]
 
-    def _set_pixel_going(self, pixel_idx: int):
+    def _set_pixel_moving(self, pixel_idx: int):
         self[pixel_idx] = colors.colors["GREEN"]
 
     def _populate_stop_map(self, ref_dictionary_stops: dict):
@@ -101,6 +104,12 @@ class TsNeopixel1Line(TsNeopixel):
         self.CACHED_TRIP_TO_DIRECTION = {}
         for trip in ref_dictionary_trips:
             self.CACHED_TRIP_TO_DIRECTION[trip['id']] = trip['directionId']
+
+    def _populate_stop_times(self, train_schedule: dict):
+        for stop_idx in range(1, len(train_schedule)):
+            self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[stop_idx]['stopId']] = (
+                    train_schedule[stop_idx]['arrivalTime'] -
+                    train_schedule[stop_idx - 1]['arrivalTime'])
 
     def update(self):
         # verify validity
@@ -138,17 +147,24 @@ class TsNeopixel1Line(TsNeopixel):
             direction = self.CACHED_TRIP_TO_DIRECTION[trip_id]
 
             # look at orientation to see which direction we're in
+            if direction == self.DIRECTION_SOUTH:
+                idx_dict_to_use = self.STOP_IDX_DICT_SB
+            else:
+                idx_dict_to_use = self.STOP_IDX_DICT_NB
 
             # find position along stop:
-            # if closestStopTimeOffset = 0 then we're done
             if distance_to_next == 0:
+                self._set_pixel_stopped(idx_dict_to_use[next_stop_name])
+            else:
+                if next_stop_id not in self.CACHED_ID_TO_TRAVEL_TIME:
+                    example_schedule = train['schedule']['stopTimes']
+                    self._populate_stop_times(example_schedule)
+                distance_ratio = distance_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
+                logger.info(f"{next_stop_id} in {distance_to_next} of {self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]}")
+                if distance_ratio < 0.01:
+                    self._set_pixel_moving(idx_dict_to_use[next_stop_name])
+                elif distance_ratio < 0.5:
+                    self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1)
+                else:
+                    self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2)
 
-
-                # find stop in stopTimes (probably have to linear search):
-                #    expected = [stopTimes][n][arrivalTime] [stopTimes][n - 1][departureTime]
-                #    interpolate actual nextStopTimeOffset
-
-                # if ABS(closeststop - nextstop)
-                # if closest == next, +2
-
-        pass
