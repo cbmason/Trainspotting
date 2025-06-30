@@ -112,6 +112,7 @@ class TsNeopixel1Line(TsNeopixel):
 
     def clear_all_pixels(self):
         self.fill(0)
+        self.show()
 
     def update(self):
         # check timestamp to make sure we haven't already processed this
