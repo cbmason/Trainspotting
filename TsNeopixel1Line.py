@@ -16,7 +16,6 @@ class TsNeopixel1Line(TsNeopixel):
         - Neopixel pitch is 0.277... inch / LED (20 inches 72 LEDs)
         - 23 total stops
         - One stop per LED would be 6.3"
-
     """
     NUM_PIXELS = 134
     DIRECTION_SOUTH = 0
