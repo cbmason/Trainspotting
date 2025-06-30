@@ -18,7 +18,7 @@ class TsNeopixel1Line(TsNeopixel):
         - One stop per LED would be 6.3"
 
     """
-    NUM_PIXELS = 133
+    NUM_PIXELS = 134
     DIRECTION_SOUTH = 0
     DIRECTION_NORTH = 1
 
@@ -91,9 +91,11 @@ class TsNeopixel1Line(TsNeopixel):
         self.fill(0)
 
     def _set_pixel_stopped(self, pixel_idx: int):
+        logger.info(f"setting {pixel_idx}")
         self[pixel_idx] = colors.colors["RED"]
 
     def _set_pixel_moving(self, pixel_idx: int):
+        logger.info(f"setting {pixel_idx}")
         self[pixel_idx] = colors.colors["GREEN"]
 
     def _populate_stop_map(self, ref_dictionary_stops: dict):
@@ -104,7 +106,7 @@ class TsNeopixel1Line(TsNeopixel):
     def _populate_trip_map(self, ref_dictionary_trips: dict):
         self.CACHED_TRIP_TO_DIRECTION = {}
         for trip in ref_dictionary_trips:
-            self.CACHED_TRIP_TO_DIRECTION[trip['id']] = trip['directionId']
+            self.CACHED_TRIP_TO_DIRECTION[trip['id']] = int(trip['directionId'])
 
     def _populate_stop_times(self, train_schedule: dict):
         for stop_idx in range(1, len(train_schedule)):
@@ -132,14 +134,14 @@ class TsNeopixel1Line(TsNeopixel):
             # for each, find where it is, and illuminate
             next_stop_id = train['status']['nextStop']
             distance_to_next = train['status']['nextStopTimeOffset']
-            trip_id = train['activeTripId']
+            trip_id = train['tripId']
 
             # cross reference the ID to [references][stops], which will have the name.  Check the cache first
             if next_stop_id not in self.CACHED_ID_TO_NAMES:
                 ref_dictionary_stops = body['data']['references']['stops']
                 # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
                 if any(item['id'] == next_stop_id for item in ref_dictionary_stops):
-                    self.populate_stop_map(ref_dictionary_stops)
+                    self._populate_stop_map(ref_dictionary_stops)
                 else:
                     continue
             next_stop_name = self.CACHED_ID_TO_NAMES[next_stop_id]
@@ -157,8 +159,10 @@ class TsNeopixel1Line(TsNeopixel):
             # look at orientation to see which direction we're in
             if direction == self.DIRECTION_SOUTH:
                 idx_dict_to_use = self.STOP_IDX_DICT_SB
+                logger.info(f"{trip_id} going south {direction} {self.DIRECTION_SOUTH}")
             else:
                 idx_dict_to_use = self.STOP_IDX_DICT_NB
+                logger.info(f"{trip_id} going north {direction} {self.DIRECTION_SOUTH}")
 
             # find position along stop:
             if distance_to_next == 0:

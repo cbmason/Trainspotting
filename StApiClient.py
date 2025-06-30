@@ -1,26 +1,10 @@
 import logging
-import time
 
 import requests
 import validators
 
+from StApiResponseHolder import StApiResponseHolder
 from TsNeopixel import TsNeopixel
-
-
-class StApiResponseHolder:
-    def __init__(self):
-        self._response = None
-        self._timestamp = 0
-
-    def set_response(self, response):
-        self._response = response
-        self._timestamp = time.time()
-
-    def get_response(self) -> requests.Response:
-        return self._response
-
-    def get_timestamp(self):
-        return self._timestamp
 
 
 class StApiClient:
@@ -57,7 +41,7 @@ class StApiClient:
             response = requests.get(endpoint, params=params)
             if response.status_code != 200:
                 logging.ERROR(f"{endpoint} returned code {response.status_code}")
-            container.set_response(response.text)
+            container.set_response(response)
         for line in self.neopixels.keys():
             line.update()
 

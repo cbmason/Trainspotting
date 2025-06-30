@@ -2,10 +2,12 @@ import logging
 import os
 import time
 
-from adafruit_blinka.microcontroller.amlogic.meson_g12_common.pin import board
+#from adafruit_blinka.microcontroller.amlogic.meson_g12_common.pin import board
+import board
 from dotenv import load_dotenv
 
-from StApiClient import StApiClient, StApiResponseHolder
+from StApiClient import StApiClient
+from StApiResponseHolder import StApiResponseHolder
 from TsNeopixel import TsNeopixel
 from TsNeopixel1Line import TsNeopixel1Line
 
@@ -54,7 +56,10 @@ if __name__ == "__main__":
     neopixel1Line = TsNeopixel1Line(
         "1 Line",
         board.D18,
-        response1Line
+        response1Line,
+        brightness=1,
+        auto_write=True,
+        byteorder="GRB"
     )
 
     # Inject dependencies
@@ -64,4 +69,4 @@ if __name__ == "__main__":
     # Run forever
     while True:
         program.update()
-        time.sleep(10000)
+        time.sleep(10)
