@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 from adafruit_blinka.microcontroller.amlogic.meson_g12_common.pin import board
 from dotenv import load_dotenv
@@ -60,6 +61,7 @@ if __name__ == "__main__":
     program.add_endpoint(StApiClient.ROUTE_1_LINE_ID, response1Line)
     program.add_line(neopixel1Line, response1Line)
 
-
-
-
+    # Run forever
+    while True:
+        program.update()
+        time.sleep(10000)

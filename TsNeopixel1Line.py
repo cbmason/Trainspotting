@@ -29,6 +29,7 @@ class TsNeopixel1Line(TsNeopixel):
             response_holder: StApiResponseHolder,
             **kwargs):
         super().__init__(name, pin, self.NUM_PIXELS, response_holder, **kwargs)
+        self._last_updated_ts = 0
 
     STOP_IDX_DICT_NB = {
         "Angle Lake": 0,
@@ -112,12 +113,19 @@ class TsNeopixel1Line(TsNeopixel):
                     train_schedule[stop_idx - 1]['arrivalTime'])
 
     def update(self):
+        # check timestamp to make sure we haven't already processed this
+        if self.response_holder.get_timestamp() == self._last_updated_ts:
+            return
+        self._last_updated_ts = self.response_holder.get_timestamp()
+
         # verify validity
         server_response = self.response_holder.get_response()
         if server_response.status_code != 200:
             logger.error(f"Error: Server responded with {server_response.status_code}")
             return
         body = server_response.json()
+
+        self._clear_all_pixels()
 
         # find all trains
         for train in body['data']['list']:
@@ -167,4 +175,3 @@ class TsNeopixel1Line(TsNeopixel):
                     self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1)
                 else:
                     self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2)
-
