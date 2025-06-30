@@ -58,7 +58,7 @@ if __name__ == "__main__":
         board.D18,
         response1Line,
         brightness=1,
-        auto_write=True,
+        #auto_write=True,
         byteorder="GRB"
     )
 
@@ -66,7 +66,10 @@ if __name__ == "__main__":
     program.add_endpoint(StApiClient.ROUTE_1_LINE_ID, response1Line)
     program.add_line(neopixel1Line, response1Line)
 
-    # Run forever
-    while True:
-        program.update()
-        time.sleep(10)
+    try:
+        # Run forever
+        while True:
+            program.update()
+            time.sleep(10)
+    finally:
+        neopixel1Line.clear_all_pixels()

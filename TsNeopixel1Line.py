@@ -87,9 +87,6 @@ class TsNeopixel1Line(TsNeopixel):
     CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
     CACHED_ID_TO_TRAVEL_TIME = {}
 
-    def _clear_all_pixels(self):
-        self.fill(0)
-
     def _set_pixel_stopped(self, pixel_idx: int):
         logger.info(f"setting {pixel_idx}")
         self[pixel_idx] = colors.colors["RED"]
@@ -114,6 +111,9 @@ class TsNeopixel1Line(TsNeopixel):
                     train_schedule[stop_idx]['arrivalTime'] -
                     train_schedule[stop_idx - 1]['arrivalTime'])
 
+    def clear_all_pixels(self):
+        self.fill(0)
+
     def update(self):
         # check timestamp to make sure we haven't already processed this
         if self.response_holder.get_timestamp() == self._last_updated_ts:
@@ -127,7 +127,7 @@ class TsNeopixel1Line(TsNeopixel):
             return
         body = server_response.json()
 
-        self._clear_all_pixels()
+        self.clear_all_pixels()
 
         # find all trains
         for train in body['data']['list']:
@@ -159,10 +159,8 @@ class TsNeopixel1Line(TsNeopixel):
             # look at orientation to see which direction we're in
             if direction == self.DIRECTION_SOUTH:
                 idx_dict_to_use = self.STOP_IDX_DICT_SB
-                logger.info(f"{trip_id} going south {direction} {self.DIRECTION_SOUTH}")
             else:
                 idx_dict_to_use = self.STOP_IDX_DICT_NB
-                logger.info(f"{trip_id} going north {direction} {self.DIRECTION_SOUTH}")
 
             # find position along stop:
             if distance_to_next == 0:
@@ -172,10 +170,11 @@ class TsNeopixel1Line(TsNeopixel):
                     example_schedule = train['schedule']['stopTimes']
                     self._populate_stop_times(example_schedule)
                 distance_ratio = distance_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
-                logger.info(f"{next_stop_id} in {distance_to_next} of {self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]}")
                 if distance_ratio < 0.01:
                     self._set_pixel_moving(idx_dict_to_use[next_stop_name])
                 elif distance_ratio < 0.5:
                     self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1)
                 else:
                     self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2)
+
+        self.show()
