@@ -90,9 +90,12 @@ class TsNeopixel1Line(TsNeopixel):
         logger.info(f"setting {pixel_idx}")
         self[pixel_idx] = colors.colors["RED"]
 
-    def _set_pixel_moving(self, pixel_idx: int):
+    def _set_pixel_moving(self, pixel_idx: int, direction: int):
         logger.info(f"setting {pixel_idx}")
-        self[pixel_idx] = colors.colors["GREEN"]
+        if direction == self.DIRECTION_SOUTH:
+            self[pixel_idx] = colors.colors["LIGHT_GREEN"]
+        else:
+            self[pixel_idx] = colors.colors["GREEN"]
 
     def _populate_stop_map(self, ref_dictionary_stops: dict):
         self.CACHED_ID_TO_NAMES = {}
