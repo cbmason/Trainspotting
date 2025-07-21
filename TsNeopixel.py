@@ -14,11 +14,12 @@ class TsNeopixel(adafruit_pixelbuf.PixelBuf, ABC):
             pin: board.pin,
             size: int,
             response_holder: StApiResponseHolder,
+            brightness: float,
             **kwargs):
         self._name = name
         self._pin = pin
         self.response_holder = response_holder
-        super().__init__(size=size, **kwargs)
+        super().__init__(size=size, brightness=brightness, **kwargs)
 
     def _transmit(self, buf):
         neopixel_write(self._pin, buf)

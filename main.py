@@ -23,17 +23,14 @@ def setup_logging():
 
 
 class Trainspotting:
-    def __init__(self):
+    def __init__(
+            self,
+            api_key: str
+    ):
         # set up interface
-        # register all lines
-        load_dotenv()
-
-        self.sample_period_sec = os.getenv("TRAIN_PERIOD_SEC", 10)
-        self.sample_period_sec = min(60, max(self.sample_period_sec, 5)) # limit update period to [5, 60] seconds
-        self.api_key = os.getenv("OBA_API_KEY", "none")
-        if self.api_key == "none":
+        if api_key == "none":
             raise EnvironmentError("No API key provided.")
-        self.api_client = StApiClient(self.api_key)
+        self.api_client = StApiClient(api_key)
 
     def add_endpoint(self, route: str, response_holder: StApiResponseHolder):
         self.api_client.add_trips_for_route_query(route, response_holder)
@@ -47,9 +44,13 @@ class Trainspotting:
 
 if __name__ == "__main__":
     setup_logging()
-    # TODO: argparser
-    # Instantiate program
-    program = Trainspotting()
+    load_dotenv()
+
+    env_sample_period_sec = int(os.getenv("TRAIN_PERIOD_SEC", 6))
+    env_sample_period_sec = min(60, max(env_sample_period_sec, 5))  # limit update period to [5, 60] seconds
+    env_api_key = os.getenv("OBA_API_KEY", "none")
+
+    program = Trainspotting(env_api_key)
 
     # Create structures
     response1Line = StApiResponseHolder()
@@ -57,8 +58,7 @@ if __name__ == "__main__":
         "1 Line",
         board.D18,
         response1Line,
-        brightness=1,
-        #auto_write=True,
+        brightness=0.10,
         byteorder="GRB"
     )
 
@@ -70,6 +70,6 @@ if __name__ == "__main__":
         # Run forever
         while True:
             program.update()
-            time.sleep(10)
+            time.sleep(env_sample_period_sec)
     finally:
         neopixel1Line.clear_all_pixels()

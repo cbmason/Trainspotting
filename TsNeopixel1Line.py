@@ -26,8 +26,9 @@ class TsNeopixel1Line(TsNeopixel):
             name: str,
             pin: board.pin,
             response_holder: StApiResponseHolder,
+            brightness: float,
             **kwargs):
-        super().__init__(name, pin, self.NUM_PIXELS, response_holder, **kwargs)
+        super().__init__(name, pin, self.NUM_PIXELS, response_holder, brightness=brightness, **kwargs)
         self._last_updated_ts = 0
 
     STOP_IDX_DICT_NB = {
@@ -86,9 +87,12 @@ class TsNeopixel1Line(TsNeopixel):
     CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
     CACHED_ID_TO_TRAVEL_TIME = {}
 
-    def _set_pixel_stopped(self, pixel_idx: int):
+    def _set_pixel_stopped(self, pixel_idx: int, direction: int):
         logger.info(f"setting {pixel_idx}")
-        self[pixel_idx] = colors.colors["RED"]
+        if direction == self.DIRECTION_SOUTH:
+            self[pixel_idx] = colors.colors["LIGHT_RED"]
+        else:
+            self[pixel_idx] = colors.colors["RED"]
 
     def _set_pixel_moving(self, pixel_idx: int, direction: int):
         logger.info(f"setting {pixel_idx}")
@@ -167,17 +171,17 @@ class TsNeopixel1Line(TsNeopixel):
 
             # find position along stop:
             if distance_to_next == 0:
-                self._set_pixel_stopped(idx_dict_to_use[next_stop_name])
+                self._set_pixel_stopped(idx_dict_to_use[next_stop_name], direction)
             else:
                 if next_stop_id not in self.CACHED_ID_TO_TRAVEL_TIME:
                     example_schedule = train['schedule']['stopTimes']
                     self._populate_stop_times(example_schedule)
                 distance_ratio = distance_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
                 if distance_ratio < 0.01:
-                    self._set_pixel_moving(idx_dict_to_use[next_stop_name])
+                    self._set_pixel_moving(idx_dict_to_use[next_stop_name], direction)
                 elif distance_ratio < 0.5:
-                    self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1)
+                    self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1, direction)
                 else:
-                    self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2)
+                    self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2, direction)
 
         self.show()
