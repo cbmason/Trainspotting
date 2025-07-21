@@ -88,14 +88,14 @@ class TsNeopixel1Line(TsNeopixel):
     CACHED_ID_TO_TRAVEL_TIME = {}
 
     def _set_pixel_stopped(self, pixel_idx: int, direction: int):
-        logger.info(f"setting {pixel_idx}")
+        # logger.info(f"setting {pixel_idx}")
         if direction == self.DIRECTION_SOUTH:
             self[pixel_idx] = colors.colors["LIGHT_RED"]
         else:
             self[pixel_idx] = colors.colors["RED"]
 
     def _set_pixel_moving(self, pixel_idx: int, direction: int):
-        logger.info(f"setting {pixel_idx}")
+        # logger.info(f"setting {pixel_idx}")
         if direction == self.DIRECTION_SOUTH:
             self[pixel_idx] = colors.colors["LIGHT_GREEN"]
         else:
@@ -112,10 +112,18 @@ class TsNeopixel1Line(TsNeopixel):
             self.CACHED_TRIP_TO_DIRECTION[trip['id']] = int(trip['directionId'])
 
     def _populate_stop_times(self, train_schedule: dict):
+        # The zeroth stop is the beginning of the run, so shouldn't have "travel time", instead use the boarding time
+        self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[0]['stopId']] = (
+            train_schedule[0]['departureTime'] - train_schedule[0]['arrivalTime']
+        )
+        if self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[0]['stopId']] == 0: # defend against div by zero
+            self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[0]['stopId']] = 1
         for stop_idx in range(1, len(train_schedule)):
             self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[stop_idx]['stopId']] = (
                     train_schedule[stop_idx]['arrivalTime'] -
                     train_schedule[stop_idx - 1]['arrivalTime'])
+            if self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[stop_idx]['stopId']] == 0:  # defend against div by zero
+                self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[stop_idx]['stopId']] = 1
 
     def clear_all_pixels(self):
         self.fill(0)
@@ -138,50 +146,53 @@ class TsNeopixel1Line(TsNeopixel):
 
         # find all trains
         for train in body['data']['list']:
-            # for each, find where it is, and illuminate
-            next_stop_id = train['status']['nextStop']
-            distance_to_next = train['status']['nextStopTimeOffset']
-            trip_id = train['tripId']
+            try:
+                # for each, find where it is, and illuminate
+                next_stop_id = train['status']['nextStop']
+                distance_to_next = train['status']['nextStopTimeOffset']
+                trip_id = train['tripId']
 
-            # cross reference the ID to [references][stops], which will have the name.  Check the cache first
-            if next_stop_id not in self.CACHED_ID_TO_NAMES:
-                ref_dictionary_stops = body['data']['references']['stops']
-                # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
-                if any(item['id'] == next_stop_id for item in ref_dictionary_stops):
-                    self._populate_stop_map(ref_dictionary_stops)
+                # cross reference the ID to [references][stops], which will have the name.  Check the cache first
+                if next_stop_id not in self.CACHED_ID_TO_NAMES:
+                    ref_dictionary_stops = body['data']['references']['stops']
+                    # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
+                    if any(item['id'] == next_stop_id for item in ref_dictionary_stops):
+                        self._populate_stop_map(ref_dictionary_stops)
+                    else:
+                        continue
+                next_stop_name = self.CACHED_ID_TO_NAMES[next_stop_id]
+
+                # cross reference the trip ID to [references][trips], which will have the direction
+                if trip_id not in self.CACHED_TRIP_TO_DIRECTION:
+                    ref_dictionary_trips = body['data']['references']['trips']
+                    # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
+                    if any(item['id'] == trip_id for item in ref_dictionary_trips):
+                        self._populate_trip_map(ref_dictionary_trips)
+                    else:
+                        continue
+                direction = self.CACHED_TRIP_TO_DIRECTION[trip_id]
+
+                # look at orientation to see which direction we're in
+                if direction == self.DIRECTION_SOUTH:
+                    idx_dict_to_use = self.STOP_IDX_DICT_SB
                 else:
-                    continue
-            next_stop_name = self.CACHED_ID_TO_NAMES[next_stop_id]
+                    idx_dict_to_use = self.STOP_IDX_DICT_NB
 
-            # cross reference the trip ID to [references][trips], which will have the direction
-            if trip_id not in self.CACHED_TRIP_TO_DIRECTION:
-                ref_dictionary_trips = body['data']['references']['trips']
-                # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
-                if any(item['id'] == trip_id for item in ref_dictionary_trips):
-                    self._populate_trip_map(ref_dictionary_trips)
+                # find position along stop:
+                if distance_to_next == 0:
+                    self._set_pixel_stopped(idx_dict_to_use[next_stop_name], direction)
                 else:
-                    continue
-            direction = self.CACHED_TRIP_TO_DIRECTION[trip_id]
-
-            # look at orientation to see which direction we're in
-            if direction == self.DIRECTION_SOUTH:
-                idx_dict_to_use = self.STOP_IDX_DICT_SB
-            else:
-                idx_dict_to_use = self.STOP_IDX_DICT_NB
-
-            # find position along stop:
-            if distance_to_next == 0:
-                self._set_pixel_stopped(idx_dict_to_use[next_stop_name], direction)
-            else:
-                if next_stop_id not in self.CACHED_ID_TO_TRAVEL_TIME:
-                    example_schedule = train['schedule']['stopTimes']
-                    self._populate_stop_times(example_schedule)
-                distance_ratio = distance_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
-                if distance_ratio < 0.01:
-                    self._set_pixel_moving(idx_dict_to_use[next_stop_name], direction)
-                elif distance_ratio < 0.5:
-                    self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1, direction)
-                else:
-                    self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2, direction)
+                    if next_stop_id not in self.CACHED_ID_TO_TRAVEL_TIME:
+                        example_schedule = train['schedule']['stopTimes']
+                        self._populate_stop_times(example_schedule)
+                    distance_ratio = distance_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
+                    if distance_ratio < 0.01:
+                        self._set_pixel_moving(idx_dict_to_use[next_stop_name], direction)
+                    elif distance_ratio < 0.5:
+                        self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1, direction)
+                    else:
+                        self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2, direction)
+            except Exception as e:
+                logger.error(f"Failed processing {train['tripId']}: {e}")
 
         self.show()
