@@ -1,4 +1,6 @@
+import traceback
 from abc import ABC
+from logging import Logger
 
 import adafruit_pixelbuf
 import board
@@ -86,16 +88,27 @@ class TsNeopixel1Line(TsNeopixel):
     CACHED_ID_TO_NAMES = {}
     CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
     CACHED_ID_TO_TRAVEL_TIME = {}
+    CURRENT_PIXELS = {}
+
+    def _set_and_check_for_multiple(self, pixel_idx) -> int:
+        if pixel_idx in self.CURRENT_PIXELS:
+            self.CURRENT_PIXELS[pixel_idx] += 1
+            return self.CURRENT_PIXELS[pixel_idx] - 1
+        else:
+            self.CURRENT_PIXELS[pixel_idx] = 1
+            return 0
 
     def _set_pixel_stopped(self, pixel_idx: int, direction: int):
-        # logger.info(f"setting {pixel_idx}")
-        if direction == self.DIRECTION_SOUTH:
+        if self._set_and_check_for_multiple(pixel_idx) != 0:
+            self[pixel_idx] = colors.colors["WHITE"]
+        elif direction == self.DIRECTION_SOUTH:
             self[pixel_idx] = colors.colors["LIGHT_RED"]
         else:
             self[pixel_idx] = colors.colors["RED"]
 
     def _set_pixel_moving(self, pixel_idx: int, direction: int):
-        # logger.info(f"setting {pixel_idx}")
+        if self._set_and_check_for_multiple(pixel_idx) != 0:
+            self[pixel_idx] = colors.colors["WHITE"]
         if direction == self.DIRECTION_SOUTH:
             self[pixel_idx] = colors.colors["LIGHT_GREEN"]
         else:
@@ -143,39 +156,48 @@ class TsNeopixel1Line(TsNeopixel):
         body = server_response.json()
 
         self.clear_all_pixels()
+        initialized = False
 
         # find all trains
         for train in body['data']['list']:
+            if not initialized:
+                try:
+                    ref_dictionary_stops = body['data']['references']['stops']
+                    self._populate_stop_map(ref_dictionary_stops)
+                    ref_dictionary_trips = body['data']['references']['trips']
+                    self._populate_trip_map(ref_dictionary_trips)
+                    self.CACHED_ID_TO_TRAVEL_TIME = {}
+                    initialized = True
+                    self.CURRENT_PIXELS = {}
+                except Exception as e:
+                    logger.error(f"Unable to read reference dictionary: {e}")
+                    return
+
             try:
                 # for each, find where it is, and illuminate
                 next_stop_id = train['status']['nextStop']
                 distance_to_next = train['status']['nextStopTimeOffset']
                 trip_id = train['tripId']
 
-                # cross reference the ID to [references][stops], which will have the name.  Check the cache first
+                # bail if we didn't find this in the global ref dict
                 if next_stop_id not in self.CACHED_ID_TO_NAMES:
-                    ref_dictionary_stops = body['data']['references']['stops']
-                    # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
-                    if any(item['id'] == next_stop_id for item in ref_dictionary_stops):
-                        self._populate_stop_map(ref_dictionary_stops)
-                    else:
-                        continue
+                    logger.warning(f"Couldn't find {next_stop_id} in stops, skipping...")
+                    continue
                 next_stop_name = self.CACHED_ID_TO_NAMES[next_stop_id]
 
-                # cross reference the trip ID to [references][trips], which will have the direction
+                # bail if we didn't find this in the global ref dict
                 if trip_id not in self.CACHED_TRIP_TO_DIRECTION:
-                    ref_dictionary_trips = body['data']['references']['trips']
-                    # See if this stop in the refdict, if so: repopulate the cache, if not, we can't do anything
-                    if any(item['id'] == trip_id for item in ref_dictionary_trips):
-                        self._populate_trip_map(ref_dictionary_trips)
-                    else:
-                        continue
+                    logger.warning(f"Couldn't find {trip_id} in directions, skipping...")
+                    continue
                 direction = self.CACHED_TRIP_TO_DIRECTION[trip_id]
 
                 # look at orientation to see which direction we're in
                 if direction == self.DIRECTION_SOUTH:
                     idx_dict_to_use = self.STOP_IDX_DICT_SB
+                elif direction == self.DIRECTION_NORTH:
+                    idx_dict_to_use = self.STOP_IDX_DICT_NB
                 else:
+                    logger.warning(f"Direction {direction} unknown!")
                     idx_dict_to_use = self.STOP_IDX_DICT_NB
 
                 # find position along stop:
@@ -186,13 +208,14 @@ class TsNeopixel1Line(TsNeopixel):
                         example_schedule = train['schedule']['stopTimes']
                         self._populate_stop_times(example_schedule)
                     distance_ratio = distance_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
-                    if distance_ratio < 0.01:
+                    if distance_ratio < 0.1:
                         self._set_pixel_moving(idx_dict_to_use[next_stop_name], direction)
-                    elif distance_ratio < 0.5:
+                    elif distance_ratio < 0.6:
                         self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1, direction)
                     else:
                         self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2, direction)
             except Exception as e:
-                logger.error(f"Failed processing {train['tripId']}: {e}")
+                logger.error(f"Failed processing {train['tripId']}")
+                logger.error(traceback.print_exc())
 
         self.show()
