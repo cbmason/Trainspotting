@@ -1,3 +1,4 @@
+import os
 import traceback
 from abc import ABC
 from logging import Logger
@@ -11,6 +12,11 @@ from StApiClient import StApiResponseHolder
 from TsNeopixel import TsNeopixel
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_parent_dir_exists(filepath):
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
 
 class TsNeopixel1Line(TsNeopixel):
     """
@@ -32,6 +38,15 @@ class TsNeopixel1Line(TsNeopixel):
             **kwargs):
         super().__init__(name, pin, self.NUM_PIXELS, response_holder, brightness=brightness, **kwargs)
         self._last_updated_ts = 0
+        self.CACHED_ID_TO_NAMES = {}
+        self.CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
+        self.CACHED_ID_TO_TRAVEL_TIME = {}
+        self.CURRENT_PIXELS = {}
+        self.seen_logtrain = False
+
+        # DEBUG
+        self.CURRENT_LOG_TRAIN = None
+        self.file_handler = None
 
     STOP_IDX_DICT_NB = {
         "Angle Lake": 0,
@@ -85,10 +100,6 @@ class TsNeopixel1Line(TsNeopixel):
         "Lynnwood City Center": 67,
     }
 
-    CACHED_ID_TO_NAMES = {}
-    CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
-    CACHED_ID_TO_TRAVEL_TIME = {}
-    CURRENT_PIXELS = {}
 
     def _set_and_check_for_multiple(self, pixel_idx) -> int:
         if pixel_idx in self.CURRENT_PIXELS:
@@ -138,6 +149,21 @@ class TsNeopixel1Line(TsNeopixel):
             if self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[stop_idx]['stopId']] == 0:  # defend against div by zero
                 self.CACHED_ID_TO_TRAVEL_TIME[train_schedule[stop_idx]['stopId']] = 1
 
+    # DEBUG
+
+    def _start_logging(self, filename):
+        _ensure_parent_dir_exists(filename)
+        self.file_handler = logging.FileHandler(filename)
+        formatter = logging.Formatter('%(asctime)s - %(message)s')
+        self.file_handler.setFormatter(formatter)
+        logger.addHandler(self.file_handler)
+
+    def _stop_and_replace_log(self, new_filename):
+        if self.file_handler:
+            logger.removeHandler(self.file_handler)
+            self.file_handler.close()
+        self._start_logging(new_filename)
+
     def clear_all_pixels(self):
         self.fill(0)
         self.show()
@@ -150,10 +176,16 @@ class TsNeopixel1Line(TsNeopixel):
 
         # verify validity
         server_response = self.response_holder.get_response()
+        if server_response is None:
+            logger.error(f"Error communicating with server!")
+            return
         if server_response.status_code != 200:
             logger.error(f"Error: Server responded with {server_response.status_code}")
             return
         body = server_response.json()
+        if body is None:
+            logger.error("Empty Body Received!")
+            return
 
         self.clear_all_pixels()
         initialized = False
@@ -169,6 +201,11 @@ class TsNeopixel1Line(TsNeopixel):
                     self.CACHED_ID_TO_TRAVEL_TIME = {}
                     initialized = True
                     self.CURRENT_PIXELS = {}
+                    if self.CURRENT_LOG_TRAIN is None:
+                        self.CURRENT_LOG_TRAIN = train['tripId']
+                        self._stop_and_replace_log('logs/' + self.CURRENT_LOG_TRAIN)
+                    self.seen_logtrain = False
+
                 except Exception as e:
                     logger.error(f"Unable to read reference dictionary: {e}")
                     return
@@ -176,7 +213,7 @@ class TsNeopixel1Line(TsNeopixel):
             try:
                 # for each, find where it is, and illuminate
                 next_stop_id = train['status']['nextStop']
-                distance_to_next = train['status']['nextStopTimeOffset']
+                time_to_next = train['status']['nextStopTimeOffset']
                 trip_id = train['tripId']
 
                 # bail if we didn't find this in the global ref dict
@@ -201,21 +238,38 @@ class TsNeopixel1Line(TsNeopixel):
                     idx_dict_to_use = self.STOP_IDX_DICT_NB
 
                 # find position along stop:
-                if distance_to_next == 0:
+                if next_stop_id not in self.CACHED_ID_TO_TRAVEL_TIME:
+                    example_schedule = train['schedule']['stopTimes']
+                    self._populate_stop_times(example_schedule)
+                if time_to_next == 0:
                     self._set_pixel_stopped(idx_dict_to_use[next_stop_name], direction)
+                    pixel_to_set = idx_dict_to_use[next_stop_name]
                 else:
-                    if next_stop_id not in self.CACHED_ID_TO_TRAVEL_TIME:
-                        example_schedule = train['schedule']['stopTimes']
-                        self._populate_stop_times(example_schedule)
-                    distance_ratio = distance_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
+                    distance_ratio = time_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
                     if distance_ratio < 0.1:
+                        pixel_to_set = idx_dict_to_use[next_stop_name]
                         self._set_pixel_moving(idx_dict_to_use[next_stop_name], direction)
                     elif distance_ratio < 0.6:
                         self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1, direction)
+                        pixel_to_set = idx_dict_to_use[next_stop_name] - 1
                     else:
                         self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2, direction)
+                        pixel_to_set = idx_dict_to_use[next_stop_name] - 2
+
+                # DEBUG LOGGING
+                if trip_id == self.CURRENT_LOG_TRAIN:
+                    self.seen_logtrain = True
+                    logger.info(
+                        f"pixel: {pixel_to_set}, "
+                        f"next_stop_name: {next_stop_name}, "
+                        f"time_to_next: {time_to_next}, "
+                        f"expected_time: {self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]}, "
+                        f"closestStop: {self.CACHED_ID_TO_NAMES[train['status']['closestStop']]}, "
+                        f"closestStopTimeOffset: {train['status']['closestStopTimeOffset']} ")
             except Exception as e:
                 logger.error(f"Failed processing {train['tripId']}")
                 logger.error(traceback.print_exc())
 
         self.show()
+        if not self.seen_logtrain:
+            self.CURRENT_LOG_TRAIN = None
