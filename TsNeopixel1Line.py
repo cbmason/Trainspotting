@@ -32,6 +32,11 @@ class TsNeopixel1Line(TsNeopixel):
             **kwargs):
         super().__init__(name, pin, self.NUM_PIXELS, response_holder, brightness=brightness, **kwargs)
         self._last_updated_ts = 0
+        self.CACHED_ID_TO_NAMES = {}
+        self.CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
+        self.CACHED_ID_TO_TRAVEL_TIME = {}
+        self.CURRENT_PIXELS = {}
+        self.FURTHEST_PER_TRAIN = {}
 
     STOP_IDX_DICT_NB = {
         "Angle Lake": 0,
@@ -85,10 +90,6 @@ class TsNeopixel1Line(TsNeopixel):
         "Lynnwood City Center": 67,
     }
 
-    CACHED_ID_TO_NAMES = {}
-    CACHED_TRIP_TO_DIRECTION = {} # 0 = south, 1 = north
-    CACHED_ID_TO_TRAVEL_TIME = {}
-    CURRENT_PIXELS = {}
 
     def _set_and_check_for_multiple(self, pixel_idx) -> int:
         if pixel_idx in self.CURRENT_PIXELS:
@@ -157,6 +158,9 @@ class TsNeopixel1Line(TsNeopixel):
 
         self.clear_all_pixels()
         initialized = False
+        current_furthest = {}
+        self.CURRENT_PIXELS = {}
+        self.CACHED_ID_TO_TRAVEL_TIME = {}
 
         # find all trains
         for train in body['data']['list']:
@@ -166,9 +170,8 @@ class TsNeopixel1Line(TsNeopixel):
                     self._populate_stop_map(ref_dictionary_stops)
                     ref_dictionary_trips = body['data']['references']['trips']
                     self._populate_trip_map(ref_dictionary_trips)
-                    self.CACHED_ID_TO_TRAVEL_TIME = {}
                     initialized = True
-                    self.CURRENT_PIXELS = {}
+
                 except Exception as e:
                     logger.error(f"Unable to read reference dictionary: {e}")
                     return
@@ -202,20 +205,33 @@ class TsNeopixel1Line(TsNeopixel):
 
                 # find position along stop:
                 if distance_to_next == 0:
-                    self._set_pixel_stopped(idx_dict_to_use[next_stop_name], direction)
+                    calculated_pixel = idx_dict_to_use[next_stop_name]
                 else:
                     if next_stop_id not in self.CACHED_ID_TO_TRAVEL_TIME:
                         example_schedule = train['schedule']['stopTimes']
                         self._populate_stop_times(example_schedule)
                     distance_ratio = distance_to_next / self.CACHED_ID_TO_TRAVEL_TIME[next_stop_id]
                     if distance_ratio < 0.1:
-                        self._set_pixel_moving(idx_dict_to_use[next_stop_name], direction)
+                        calculated_pixel = idx_dict_to_use[next_stop_name]
                     elif distance_ratio < 0.6:
-                        self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 1, direction)
+                        calculated_pixel = idx_dict_to_use[next_stop_name] - 1
                     else:
-                        self._set_pixel_moving(idx_dict_to_use[next_stop_name] - 2, direction)
+                        calculated_pixel = idx_dict_to_use[next_stop_name] - 2
+                # The "FURTHEST_PER_TRAIN" table attempts to fix noisy and incorrect reporting by never going backwards.
+                # We sanity check to make sure the train is close to where we think it is, if not then just take the
+                # server's word for it no matter what.
+                if trip_id in self.FURTHEST_PER_TRAIN:
+                    if abs(self.FURTHEST_PER_TRAIN[trip_id] - calculated_pixel) < 3:
+                        calculated_pixel = max(calculated_pixel, self.FURTHEST_PER_TRAIN[trip_id])
+                if calculated_pixel in idx_dict_to_use.values() and distance_to_next == 0:
+                    self._set_pixel_stopped(calculated_pixel, direction)
+                else:
+                    self._set_pixel_moving(calculated_pixel, direction)
+                current_furthest[trip_id] = calculated_pixel
+
             except Exception as e:
                 logger.error(f"Failed processing {train['tripId']}")
                 logger.error(traceback.print_exc())
 
+        self.FURTHEST_PER_TRAIN = current_furthest
         self.show()
