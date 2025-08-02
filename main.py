@@ -39,7 +39,7 @@ class Trainspotting:
         self.api_client.add_neopixel(line, response_holder)
 
     def update(self):
-        self.api_client.update()
+        return self.api_client.update()
 
 
 if __name__ == "__main__":
@@ -69,7 +69,10 @@ if __name__ == "__main__":
     try:
         # Run forever
         while True:
-            program.update()
-            time.sleep(env_sample_period_sec)
+            wait_seconds = program.update()
+            if wait_seconds is not None:
+                time.sleep(max(env_sample_period_sec, wait_seconds))
+            else:
+                time.sleep(env_sample_period_sec)
     finally:
         neopixel1Line.clear_all_pixels()
