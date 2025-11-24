@@ -40,7 +40,7 @@ class StApiClient:
         self.neopixels[neopixel] = response_holder
 
     def update(self):
-        params = {'key': self.api_key}
+        params = {'key': self.api_key, 'includeStatus': 'true'}
         for endpoint, container in self.endpoints.items():
             response = requests.get(endpoint, params=params)
             if response is None:
