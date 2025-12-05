@@ -182,6 +182,10 @@ class TsNeopixel1Line(TsNeopixel):
                 distance_to_next = train['status']['nextStopTimeOffset']
                 trip_id = train['tripId']
 
+                # these fake "_dup" trains seem to appear and mess things up, filter them out
+                if "_dup" in trip_id.lower():
+                    continue
+
                 # bail if we didn't find this in the global ref dict
                 if next_stop_id not in self.CACHED_ID_TO_NAMES:
                     logger.warning(f"Couldn't find {next_stop_id} in stops, skipping...")

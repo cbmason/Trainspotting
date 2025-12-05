@@ -98,7 +98,7 @@ class TsNeopixel1LineFake:
             self.led_model[pixel_idx] = "RED"
         else:
             self.led_model[pixel_idx] = "PURPLE"
-        self.led_model_trips[pixel_idx] = trip_id
+        self.led_model_trips[pixel_idx] += trip_id
 
     def _set_pixel_moving(self, pixel_idx: int, direction: int, trip_id: str):
         if self._set_and_check_for_multiple(pixel_idx) != 0:
@@ -109,7 +109,7 @@ class TsNeopixel1LineFake:
             self.led_model[pixel_idx] = "GREEN"
         else:
             self.led_model[pixel_idx] = "PINK"
-        self.led_model_trips[pixel_idx] = trip_id
+        self.led_model_trips[pixel_idx] += trip_id
 
     def _populate_stop_map(self, ref_dictionary_stops: dict):
         self.CACHED_ID_TO_NAMES = {}
