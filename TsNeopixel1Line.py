@@ -221,6 +221,8 @@ class TsNeopixel1Line(TsNeopixel):
                         calculated_pixel = idx_dict_to_use[next_stop_name] - 1
                     else:
                         calculated_pixel = idx_dict_to_use[next_stop_name] - 2
+                    if calculated_pixel < 0:
+                        continue
                 # The "FURTHEST_PER_TRAIN" table attempts to fix noisy and incorrect reporting by never going backwards.
                 # We sanity check to make sure the train is close to where we think it is, if not then just take the
                 # server's word for it no matter what.
